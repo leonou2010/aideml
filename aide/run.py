@@ -26,7 +26,27 @@ from rich.status import Status
 from rich.tree import Tree
 from .utils.config import load_task_desc, prep_agent_workspace, save_run, load_cfg
 
-logger = logging.getLogger("aide")
+LOG_FORMAT = "%(asctime)s - %(message)s"
+LOG_DATEFMT = "[%X]"
+LOG_FILENAME = "logs/aide.log"
+
+# Remove all handlers from root logger (prevents duplicates)
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
+    handlers=[
+        logging.FileHandler(LOG_FILENAME, mode="a"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger()  # Use root logger
+
+logger.info("Test log: does this appear in aide.log and terminal?")
 
 
 def journal_to_rich_tree(journal: Journal):

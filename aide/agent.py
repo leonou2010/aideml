@@ -51,7 +51,7 @@ class Agent:
         cfg: Config,
         journal: Journal,
     ):
-        super().__init__()
+        super().__init__() # why there is super?? copilot said it is not needed
         self.task_desc = task_desc
         self.cfg = cfg
         self.acfg = cfg.agent

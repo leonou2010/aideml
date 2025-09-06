@@ -137,7 +137,7 @@ class Interpreter:
 
         global_scope: dict = {}
         while True:
-            code = code_inq.get()
+            code = code_inq.get() #copilot said this will keep waiting until a code arrive from parent
             os.chdir(str(self.working_dir))
             with open(self.agent_file_name, "w") as f:
                 f.write(code)
