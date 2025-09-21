@@ -280,16 +280,17 @@ class Agent:
         parent_node = self.search_policy()
         logger.debug(f"Agent is generating code, parent node type: {type(parent_node)}")
 
+        # these three functions all call the LLM to generate code
         if parent_node is None:
-            result_node = self._draft()
+            result_node = self._draft()            
         elif parent_node.is_buggy:
             result_node = self._debug(parent_node)
         else:
             result_node = self._improve(parent_node)
-
-        self.parse_exec_result(
+ 
+        self.parse_exec_result(                                # this is where, as a wrapper, the evalution of the code happens
             node=result_node,
-            exec_result=exec_callback(result_node.code, True),
+            exec_result=exec_callback(result_node.code, True), # this is where the code is to run
         )
         self.journal.append(result_node)
 
@@ -298,6 +299,7 @@ class Agent:
 
         node.absorb_exec_result(exec_result)
 
+        # ask the LLM to review the execution results
         prompt = {
             "Introduction": (
                 "You are a Kaggle grandmaster attending a competition. "

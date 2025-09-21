@@ -148,8 +148,8 @@ def run():
         refresh_per_second=16,
         screen=True,
     ) as live:
-        while global_step < cfg.agent.steps:
-            agent.step(exec_callback=exec_callback)
+        while global_step < cfg.agent.steps:               # this is the loop for each steps
+            agent.step(exec_callback=exec_callback) 
             save_run(cfg, journal)
             global_step = len(journal)
             live.update(generate_live())

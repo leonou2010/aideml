@@ -128,7 +128,7 @@ class Interpreter:
 
         # capture stdout and stderr
         # trunk-ignore(mypy/assignment)
-        sys.stdout = sys.stderr = RedirectQueue(result_outq)
+        sys.stdout = sys.stderr = RedirectQueue(result_outq) # interesting way to redirect output to a queue
 
     def _run_session(
         self, code_inq: Queue, result_outq: Queue, event_outq: Queue
@@ -232,7 +232,7 @@ class Interpreter:
 
         # wait for child to actually start execution (we don't want interrupt child setup)
         try:
-            state = self.event_outq.get(timeout=10)
+            state = self.event_outq.get(timeout=20)
         except queue.Empty:
             msg = "REPL child process failed to start execution"
             logger.critical(msg)
@@ -297,6 +297,8 @@ class Interpreter:
             except queue.Empty:
                 continue
         output.pop()  # remove the EOF marker
+        logger.info("output of interpreter")
+        logger.info(output)
 
         e_cls_name, exc_info, exc_stack = state[1:]
 

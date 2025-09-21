@@ -65,7 +65,7 @@ def query(
 
     # Attempt the API call
     try:
-        completion = backoff_create(
+        completion = backoff_create( # this shit doesnt work
             _client.chat.completions.create,
             GEMINI_TIMEOUT_EXCEPTIONS,
             messages=messages,
@@ -96,6 +96,7 @@ def query(
     req_time = time.time() - t0
     choice = completion.choices[0]
 
+    # tested on sep6, 2025, gemini-2.5-pro, works
     # Decide how to parse the response
     if func_spec is None or "tools" not in filtered_kwargs:
         # No function calling was ultimately used
@@ -143,3 +144,20 @@ def query(
     logger.info(f"Gemini API response: {output}")
 
     return output, req_time, in_tokens, out_tokens, info
+
+if __name__ == "__main__":
+    import pyperclip
+
+    _setup_gemini_client()
+    try:
+        # Minimal test prompt
+        response = _client.chat.completions.create(
+            messages=[{"role": "user", "content": "Hello Gemini, are you working?"}],
+            model="gemini-2.5-pro"
+        )
+        print("API call succeeded!")
+        print("Response:", response.choices[0].message.content) # tested for gemini-2.5-pro, works, sep6
+        pyperclip.copy(response.choices[0].message.content)
+        print("Response copied to clipboard!")
+    except Exception as e:
+        print("API call failed:", e)

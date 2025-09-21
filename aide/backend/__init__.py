@@ -64,7 +64,7 @@ def query(
 
     provider = determine_provider(model)
     query_func = provider_to_query_func[provider]
-    output, req_time, in_tok_count, out_tok_count, info = query_func(
+    output, req_time, in_tok_count, out_tok_count, info = query_func( # this is where you specify the prompt for query
         system_message=compile_prompt_to_md(system_message) if system_message else None,
         user_message=compile_prompt_to_md(user_message) if user_message else None,
         func_spec=func_spec,

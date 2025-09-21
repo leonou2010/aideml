@@ -65,6 +65,7 @@ def query(
     if (
         re.match(r"^o\d", filtered_kwargs["model"])
         or filtered_kwargs["model"] == "codex-mini-latest"
+        or filtered_kwargs["model"].startswith("gpt-5")
     ):
         filtered_kwargs.pop("temperature", None)
 
@@ -108,7 +109,7 @@ def query(
                 **filtered_kwargs,
             )
         else:
-            response = backoff_create(
+            response = backoff_create(   
                 _client.responses.create,
                 OPENAI_TIMEOUT_EXCEPTIONS,
                 input=messages,

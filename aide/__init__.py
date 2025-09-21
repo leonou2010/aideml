@@ -21,7 +21,7 @@ class Solution:
 
 
 class Experiment:
-    def __init__(self, data_dir: str, goal: str, eval: str | None = None):
+    def __init__(self, data_dir: str, goal: str, eval: str | None = None, model: str = "openai"):
         """Initialize a new experiment run.
 
         Args:
