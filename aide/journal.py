@@ -11,6 +11,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Literal, Optional
+import random
 
 from dataclasses_json import DataClassJsonMixin
 from .interpreter import ExecutionResult
@@ -179,10 +180,18 @@ class Journal(DataClassJsonMixin):
             nodes = self.nodes
         return max(nodes, key=lambda n: n.metric)
 
-    def generate_summary(self, include_code: bool = False) -> str:
-        """Generate a summary of the journal for the agent."""
+    def generate_summary(self, include_code: bool = True, num_best_nodes: int = 10, num_selected_nodes: int = 5) -> str:
+        """Generate a summary of the journal for the agent, using up to num_best_nodes nodes, then randomly picking up to num_selected_nodes for the summary."""
+        good_nodes = self.good_nodes
+        # Sort by metric descending (assuming higher is better)
+        best_nodes = sorted(good_nodes, key=lambda n: getattr(n.metric, 'value', 0), reverse=True)[:num_best_nodes]
+        k = min(num_selected_nodes, len(best_nodes))
+        if k > 0:
+            selected_nodes = random.sample(best_nodes, k)
+        else:
+            selected_nodes = []
         summary = []
-        for n in self.good_nodes:
+        for n in selected_nodes:
             summary_part = f"Design: {n.plan}\n"
             if include_code:
                 summary_part += f"Code: {n.code}\n"

@@ -33,13 +33,19 @@ report:
 # agent hyperparams
 agent:
   # how many improvement iterations to run
-  steps: 20
+  steps: 30
   # whether to instruct the agent to use CV (set to 1 to disable)
   k_fold_validation: 5
   # whether to instruct the agent to generate a prediction function
   expose_prediction: False
   # whether to provide the agent with a preview of the data
   data_preview: True
+  # whether to provide the agent with Execution Guidelines
+  exec_guidelines: True
+  # whether to provide data descriptions to the agent
+  data_desc: True
+  # how many previous scripts to include in the prompt
+  prev_scripts: 5
 
   # LLM settings for coding
   code:
@@ -55,4 +61,4 @@ agent:
   search:
     max_debug_depth: 3
     debug_prob: 0.5
-    num_drafts: 5
+    num_drafts: 7 # changed from 5 to 10

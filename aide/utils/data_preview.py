@@ -9,6 +9,10 @@ import humanize
 import pandas as pd
 from genson import SchemaBuilder
 from pandas.api.types import is_numeric_dtype
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # these files are treated as code (e.g. markdown wrapped)
 code_files = {".py", ".sh", ".yaml", ".yml", ".md", ".html", ".xml", ".log", ".rst"}
@@ -151,3 +155,21 @@ def generate(base_path, include_file_details=True, simple=False):
         )
 
     return result
+
+def gen_data_desc(base_path):
+    """
+    Reads and returns the contents of data_description.txt from the input directory specified in cfg.
+    Returns None if the file does not exist.
+    """
+    desc_file_name = "data_description.txt"
+    for fn in _walk(base_path):
+        if fn.name == desc_file_name:
+            desc_path = fn
+            break
+    else:
+        return logger.warning(f"{desc_file_name} not found in {base_path}")
+
+    if desc_path.exists():
+        with open(desc_path, encoding='utf-8') as f:
+            return f.read()
+    return None # check if it read the file correctly

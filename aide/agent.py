@@ -1,6 +1,7 @@
 import logging
 import random
 from typing import Any, Callable, cast
+import math
 
 import humanize
 from .backend import FunctionSpec, query
@@ -10,6 +11,7 @@ from .utils import data_preview
 from .utils.config import Config
 from .utils.metric import MetricValue, WorstMetricValue
 from .utils.response import extract_code, extract_text_up_to_code, wrap_code
+from .utils import strong_prompts
 
 logger = logging.getLogger("aide")
 
@@ -54,9 +56,11 @@ class Agent:
         super().__init__() # why there is super?? copilot said it is not needed
         self.task_desc = task_desc
         self.cfg = cfg
-        self.acfg = cfg.agent
+        self.acfg = cfg.agent   # check here, if the config eat the new params (1,2,3)
         self.journal = journal
         self.data_preview: str | None = None
+        self.exec_guidelines: str | None = None
+        self.data_desc: str | None = None
 
     def search_policy(self) -> Node | None:
         """Select a node to work on (or None to draft a new node)."""
@@ -80,7 +84,7 @@ class Agent:
                 return random.choice(debuggable_nodes)
             logger.debug("[search policy] not debugging by chance")
 
-        # back to drafting if no nodes to improve
+        # back to drafting if no nodes to improve (ie no good nodes, all are buggy)
         good_nodes = self.journal.good_nodes
         if not good_nodes:
             logger.debug("[search policy] drafting new node (no good nodes)")
@@ -144,7 +148,7 @@ class Agent:
     def _prompt_resp_fmt(self):
         return {
             "Response format": (
-                "Your response should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences), "
+                "Your response should be a step-by-step outline/sketch of your proposed solution in natural language (5-10 sentences), "
                 "followed by a single markdown code block (wrapped in ```) which implements this solution and prints out the evaluation metric. "
                 "There should be no additional headings or text in your response. Just natural language text followed by a newline and then the markdown code block. "
             )
@@ -180,21 +184,35 @@ class Agent:
                 "for a solution and then implement this solution in Python. We will now provide a description of the task."
             ),
             "Task description": self.task_desc,
-            "Memory": self.journal.generate_summary(),
+            "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
+            "Memory": self.journal.generate_summary(
+                num_best_nodes=math.ceil(self.acfg.prev_scripts * 1.5), 
+                num_selected_nodes=self.acfg.prev_scripts
+                ),
             "Instructions": {},
         }
         prompt["Instructions"] |= self._prompt_resp_fmt
         prompt["Instructions"] |= {
             "Solution sketch guideline": [
-                "This first solution design should be relatively simple, without ensembling or hyper-parameter optimization.",
                 "Take the Memory section into consideration when proposing the design,"
                 " don't propose the same modelling solution but keep the evaluation the same.",
-                "The solution sketch should be 3-5 sentences.",
+                "The solution sketch should be 5-10 sentences.",
                 "Propose an evaluation metric that is reasonable for this task.",
                 "Don't suggest to do EDA.",
                 "The data is already prepared and available in the `./input` directory. There is no need to unzip any files.",
+                "Emphasize efficiency for scalability: Manage large datasets via subsampling, optimized categorical data types, etc."
             ],
         }
+        if self.acfg.data_desc and self.data_desc is not None:
+            prompt["Instructions"]['Solution sketch guideline'].append(
+                "Carefully review the data description to inform your feature engineering and modeling choices."
+            )
+        
+        if self.acfg.exec_guidelines and self.exec_guidelines is not None:
+            prompt["Instructions"] |= {
+                "Execution guidelines": self.exec_guidelines
+            }
+
         prompt["Instructions"] |= self._prompt_impl_guideline
         prompt["Instructions"] |= self._prompt_environment
 
@@ -206,32 +224,34 @@ class Agent:
 
     def _improve(self, parent_node: Node) -> Node:
         prompt: Any = {
-            "Introduction": (
-                "You are a Kaggle grandmaster attending a competition. You are provided with a previously developed "
-                "solution below and should improve it in order to further increase the (test time) performance. "
-                "For this you should first outline a brief plan in natural language for how the solution can be improved and "
-                "then implement this improvement in Python based on the provided previous solution. "
-            ),
+            "Introduction": strong_prompts.get_critique_prompt(),
             "Task description": self.task_desc,
-            "Memory": self.journal.generate_summary(),
+            "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
+            "Memory": self.journal.generate_summary(
+                num_best_nodes=math.ceil(self.acfg.prev_scripts * 1.5), 
+                num_selected_nodes=self.acfg.prev_scripts
+                ),
             "Instructions": {},
         }
-        prompt["Previous solution"] = {
-            "Code": wrap_code(parent_node.code),
-        }
+        # prompt["Previous solution"] = { # we are putting everything in memory
+        #     "Code": wrap_code(parent_node.code),
+        # }
 
         prompt["Instructions"] |= self._prompt_resp_fmt
         prompt["Instructions"] |= {
             "Solution improvement sketch guideline": [
-                "The solution sketch should be a brief natural language description of how the previous solution can be improved.",
-                "You should be very specific and should only propose a single actionable improvement.",
-                "This improvement should be atomic so that we can experimentally evaluate the effect of the proposed change.",
+                "You should first outline a solution sketch plan in natural language for how the solution can be improved and "
+                "then implement this improvement in Python based on the provided previous solutions.\n"
                 "Take the Memory section into consideration when proposing the improvement.",
-                "The solution sketch should be 3-5 sentences.",
+                "The solution sketch should be 5-10 sentences.",
                 "Don't suggest to do EDA.",
             ],
         }
         prompt["Instructions"] |= self._prompt_impl_guideline
+        if self.acfg.exec_guidelines and self.exec_guidelines is not None:
+            prompt["Instructions"] |= {
+                "Execution guidelines": self.exec_guidelines
+            }
 
         plan, code = self.plan_and_code_query(prompt)
         return Node(
@@ -273,9 +293,21 @@ class Agent:
     ):
         self.data_preview = data_preview.generate(self.cfg.workspace_dir)
 
+    def update_exec_guidelines(self):
+        self.exec_guidelines = strong_prompts.get_full_exec_guidelines_prompt()
+
+    def update_data_desc(self):
+        self.data_desc = data_preview.gen_data_desc(self.cfg.workspace_dir)
+
     def step(self, exec_callback: ExecCallbackType):
         if not self.journal.nodes or self.data_preview is None:
             self.update_data_preview()
+        
+        if not self.journal.nodes or self.exec_guidelines is None:
+            self.update_exec_guidelines()
+
+        if not self.journal.nodes or self.data_desc is None:
+            self.update_data_desc()
 
         parent_node = self.search_policy()
         logger.debug(f"Agent is generating code, parent node type: {type(parent_node)}")
