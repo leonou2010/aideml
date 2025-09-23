@@ -18,21 +18,22 @@ def get_full_exec_guidelines_prompt():
         + get_feature_selection_prompt() + "\n\n"
         + get_modeling_prompt() + "\n\n"
         + get_hyperparameter_tuning_prompt() + "\n\n"
-        + get_ensembling_prompt()
+        + get_ensembling_prompt() + "\n\n"
+        + get_overfitting_check_prompt()
     )
 
 
-def get_header_prompt():
-    return (
-        f"You are an elite Kaggle Grandmaster, renowned for securing gold medals in tabular data competitions "
-        f"through innovative, adaptive strategies that consistently outpace rivals.\n"
-        f"Your mastery encompasses predictive, domain-inspired feature engineering (beyond mere relational mapping),\n"
-        f"finely tuned GBDT ensembles (with LightGBM as the cornerstone, augmented by XGBoost and CatBoost),\n"
-        f"and sophisticated multi-level stacking with precise weighting. \n"
-        f"Your mission: Craft a single, fully executable Python script that delivers an automated, "
-        f"competition-winning Kaggle solution—requiring no human intervention, producing no intermediate outputs, "
-        f"and yielding only a ready-to-submit 'submission.csv'."
-    )
+# def get_header_prompt():
+#     return (
+#         f"You are an elite Kaggle Grandmaster, renowned for securing gold medals in tabular data competitions "
+#         f"through innovative, adaptive strategies that consistently outpace rivals.\n"
+#         f"Your mastery encompasses predictive, domain-inspired feature engineering (beyond mere relational mapping),\n"
+#         f"finely tuned GBDT ensembles (with LightGBM as the cornerstone, augmented by XGBoost and CatBoost),\n"
+#         f"and sophisticated multi-level stacking with precise weighting. \n"
+#         f"Your mission: Craft a single, fully executable Python script that delivers an automated, "
+#         f"competition-winning Kaggle solution—requiring no human intervention, producing no intermediate outputs, "
+#         f"and yielding only a ready-to-submit 'submission.csv'."
+#     )
 
 
 def get_execution_prompt():
@@ -47,6 +48,7 @@ def get_execution_prompt():
         f"  - Selectively filter features by criteria before advancing to engineering;\n"
         f"  - Employ nested decision trees in code (e.g., if classification task with imbalance ratio >5:1, integrate SMOTE; otherwise, bypass;\n"
         f"    if post-engineering features exceed 200, deploy RFE; else, opt for permutation importance)."
+        f"  - Be careful not to over-engineer and overfit the solution to the validation set."
     )
 
 
@@ -149,6 +151,18 @@ def get_ensembling_prompt():
         "  - Stacking: Use a meta-model to learn how to best combine the predictions of several base models.\n"
         "  - Blending: Combine predictions from different models using a holdout validation set to optimize the final output.\n"
         "- **Implementation**: Experiment with different combinations and weights for each model in the ensemble, using cross-validation to validate performance improvements."
+    )
+
+def get_overfitting_check_prompt():
+    return (
+        "#### 8. Overfitting Check\n"
+        "To ensure robustness, incorporate an overfitting check after training: "
+        "Split the training data into a train set (80%) and validation set (20%) using stratified splitting if classification or random if regression. "
+        "Compute the evaluation metric (e.g., RMSE for regression or AUC for classification, based on the task) on both the in-sample (train) data and out-of-sample (validation) data. "
+        "Calculate the ratio as (in-sample metric / out-of-sample metric) if higher is better (e.g., accuracy, AUC) or (out-of-sample metric / in-sample metric) if lower is better (e.g., RMSE, MAE), "
+        "adjusting the formula to make the ratio >1 indicate potential overfitting. Print the computed ratio, and if it exceeds 1.2, "
+        "print 'Warning: Model may be overfitting' before proceeding to final predictions. Keep the script efficient, "
+        "handling large datasets via optimized data types and subsampling if needed, and ensure the overfitting check doesn't alter the final submission."
     )
 
 

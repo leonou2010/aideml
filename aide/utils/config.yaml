@@ -61,4 +61,4 @@ agent:
   search:
     max_debug_depth: 3
     debug_prob: 0.5
-    num_drafts: 7 # changed from 5 to 10
+    num_drafts: 10 # changed from 5 to 10

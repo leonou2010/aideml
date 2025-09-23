@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 import random
+import difflib
 
 from dataclasses_json import DataClassJsonMixin
 from .interpreter import ExecutionResult
@@ -180,22 +181,54 @@ class Journal(DataClassJsonMixin):
             nodes = self.nodes
         return max(nodes, key=lambda n: n.metric)
 
-    def generate_summary(self, include_code: bool = True, num_best_nodes: int = 10, num_selected_nodes: int = 5) -> str:
-        """Generate a summary of the journal for the agent, using up to num_best_nodes nodes, then randomly picking up to num_selected_nodes for the summary."""
+    def generate_summary(self, include_code: bool = True, num_selected_nodes: int = 5) -> str:
+        """Generate a summary of the journal for the agent, sampling good nodes with probability proportional to their rank."""
         good_nodes = self.good_nodes
-        # Sort by metric descending (assuming higher is better)
-        best_nodes = sorted(good_nodes, key=lambda n: getattr(n.metric, 'value', 0), reverse=True)[:num_best_nodes]
-        k = min(num_selected_nodes, len(best_nodes))
-        if k > 0:
-            selected_nodes = random.sample(best_nodes, k)
-        else:
-            selected_nodes = []
+        if not good_nodes:
+            return ""
+        # Iterative rank-based sampling with diversity check and no repeats
+        def code_similarity(a, b):
+            # Use SequenceMatcher ratio as a simple similarity metric (1.0 = identical)
+            return difflib.SequenceMatcher(None, a, b).ratio()
+
+        sorted_nodes = sorted(good_nodes, key=lambda n: getattr(n.metric, 'value', 0), reverse=False)
+        node_to_weight = {node: idx + 1 for idx, node in enumerate(sorted_nodes)}
+        available_nodes = set(good_nodes)
+        selected_nodes = []
+        k = min(num_selected_nodes, len(good_nodes))
+        max_similarity = 0.8  # threshold for "too close" code
+        for _ in range(k):
+            candidates = list(available_nodes)
+            if not candidates:
+                break
+            weights = [node_to_weight[n] for n in candidates]
+            # Try up to 10 times to find a diverse enough node
+            for _ in range(10):
+                chosen = random.choices(candidates, weights=weights, k=1)[0]
+                # Check similarity to all previously selected nodes
+                if all(code_similarity(chosen.code, s.code) < max_similarity for s in selected_nodes):
+                    selected_nodes.append(chosen)
+                    available_nodes.remove(chosen)
+                    break
+                else:
+                    # Remove this candidate for this round and try again
+                    idx = candidates.index(chosen)
+                    candidates.pop(idx)
+                    weights.pop(idx)
+                    if not candidates:
+                        break
+            else:
+                # If no sufficiently diverse node found, just pick the next best available
+                chosen = max(available_nodes, key=lambda n: node_to_weight[n])
+                selected_nodes.append(chosen)
+                available_nodes.remove(chosen)
+
         summary = []
         for n in selected_nodes:
             summary_part = f"Design: {n.plan}\n"
             if include_code:
                 summary_part += f"Code: {n.code}\n"
             summary_part += f"Results: {n.analysis}\n"
-            summary_part += f"Validation Metric: {n.metric.value}\n"
+            summary_part += f"Validation Metric: {getattr(n.metric, 'value', 'N/A')}\n"
             summary.append(summary_part)
         return "\n-------------------------------\n".join(summary)

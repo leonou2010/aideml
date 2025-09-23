@@ -186,7 +186,6 @@ class Agent:
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
             "Memory": self.journal.generate_summary(
-                num_best_nodes=math.ceil(self.acfg.prev_scripts * 1.5), 
                 num_selected_nodes=self.acfg.prev_scripts
                 ),
             "Instructions": {},
@@ -194,13 +193,14 @@ class Agent:
         prompt["Instructions"] |= self._prompt_resp_fmt
         prompt["Instructions"] |= {
             "Solution sketch guideline": [
-                "Take the Memory section into consideration when proposing the design,"
-                " don't propose the same modelling solution but keep the evaluation the same.",
-                "The solution sketch should be 5-10 sentences.",
-                "Propose an evaluation metric that is reasonable for this task.",
-                "Don't suggest to do EDA.",
-                "The data is already prepared and available in the `./input` directory. There is no need to unzip any files.",
-                "Emphasize efficiency for scalability: Manage large datasets via subsampling, optimized categorical data types, etc."
+                "Take the Memory section into consideration as a helpful reference, "
+                "but do not base your entire plan or implementation solely on it—draw from broader expertise and innovative ideas as well.",
+                " Don't propose the same modelling solution but keep the evaluation the same. ",
+                "The solution sketch should be 5-10 sentences. ",
+                "Propose an evaluation metric that is reasonable for this task. ",
+                "Don't suggest to do EDA. ",
+                "The data is already prepared and available in the `./input` directory. There is no need to unzip any files. ",
+                "Emphasize efficiency for scalability: Manage large datasets via subsampling, optimized categorical data types, etc. "
             ],
         }
         if self.acfg.data_desc and self.data_desc is not None:
@@ -228,7 +228,6 @@ class Agent:
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
             "Memory": self.journal.generate_summary(
-                num_best_nodes=math.ceil(self.acfg.prev_scripts * 1.5), 
                 num_selected_nodes=self.acfg.prev_scripts
                 ),
             "Instructions": {},
@@ -242,7 +241,8 @@ class Agent:
             "Solution improvement sketch guideline": [
                 "You should first outline a solution sketch plan in natural language for how the solution can be improved and "
                 "then implement this improvement in Python based on the provided previous solutions.\n"
-                "Take the Memory section into consideration when proposing the improvement.",
+                "Take the Memory section into consideration as a helpful reference when proposing improvements, "
+                "but do not base your entire improvement plan or implementation solely on it—draw from broader expertise and innovative ideas as well.",
                 "The solution sketch should be 5-10 sentences.",
                 "Don't suggest to do EDA.",
             ],
@@ -341,6 +341,7 @@ class Agent:
             "Task description": self.task_desc,
             "Implementation": wrap_code(node.code),
             "Execution output": wrap_code(node.term_out, lang=""),
+            "Check Overfitting": "If 'Warning: Model may be overfitting' is in the output, then the model is buggy.",
         }
 
         response = cast(
