@@ -25,7 +25,7 @@ review_func_spec = FunctionSpec(
         "properties": {
             "is_bug": {
                 "type": "boolean",
-                "description": "true if the output log shows that the execution failed or has some bug, otherwise false.",
+                "description": "true if the output log shows that the execution failed or has some bug, or output is empty, or 'Warning: Model may be overfitting' is in the output, otherwise false.",
             },
             "summary": {
                 "type": "string",

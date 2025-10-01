@@ -54,7 +54,7 @@ agent:
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-4.1-mini
+    model: gpt-4.1-mini # change to gpt-5
     temp: 0.5
 
   # hyperparameters for the tree search
