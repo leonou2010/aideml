@@ -51,15 +51,39 @@ def strip_code_markers(code: str) -> str:
     return code
 
 
-def cfg_to_tree_struct(cfg, jou: Journal):
+def cfg_to_tree_struct(cfg, jou: Journal, selected_nodes=None):
     edges = list(get_edges(jou))
     layout = normalize_layout(generate_layout(len(jou), edges))
 
-    # metrics = np.array([n.metric.value_npsafe for n in jou])
-    # metrics = (metrics - np.nanmin(metrics)) / (np.nanmax(metrics) - np.nanmin(metrics))
-    # metrics = np.nan_to_num(metrics, nan=1)
-    # metrics[:] = 0
-    metrics = np.array([0 for n in jou])
+    # Get actual metrics from nodes
+    metrics = []
+    metric_values = []
+    is_buggy = []
+    seen_nodes_per_node = []  # Track which nodes each node "saw"
+    
+    for n in jou:
+        if hasattr(n, 'metric') and n.metric:
+            if hasattr(n.metric, 'value') and n.metric.value is not None:
+                metrics.append(n.metric.value)
+                metric_values.append(f"{n.metric.value:.4f}")
+            else:
+                metrics.append(0)
+                metric_values.append("N/A")
+        else:
+            metrics.append(0)
+            metric_values.append("N/A")
+        is_buggy.append(getattr(n, 'is_buggy', False))
+        
+        # NEW: Get the nodes this node "saw" when it was created
+        seen_nodes = getattr(n, 'seen_nodes', [])
+        seen_nodes_per_node.append(seen_nodes)
+
+    # Mark which nodes were selected for summary
+    node_selected = [False for n in jou.nodes]
+    if selected_nodes:
+        for node in selected_nodes:
+            if node.step < len(node_selected):
+                node_selected[node.step] = True
 
     return dict(
         edges=edges,
@@ -69,16 +93,19 @@ def cfg_to_tree_struct(cfg, jou: Journal):
         term_out=[n.term_out for n in jou],
         analysis=[n.analysis for n in jou],
         exp_name=cfg.exp_name,
-        metrics=metrics.tolist(),
+        metrics=metrics,
+        metric_values=metric_values,
+        is_buggy=is_buggy,
+        selected_for_summary=node_selected,
+        seen_nodes_per_node=seen_nodes_per_node,  # This line exists but wasn't populated
     )
-
 
 def generate_html(tree_graph_str: str):
     template_dir = Path(__file__).parent / "viz_templates"
 
     with open(template_dir / "template.js") as f:
         js = f.read()
-        js = js.replace("<placeholder>", tree_graph_str)
+        js = js.replace("/*<placeholder>*/ {}", tree_graph_str)
 
     with open(template_dir / "template.html") as f:
         html = f.read()
@@ -87,8 +114,8 @@ def generate_html(tree_graph_str: str):
         return html
 
 
-def generate(cfg, jou: Journal, out_path: Path):
-    tree_graph_str = json.dumps(cfg_to_tree_struct(cfg, jou))
+def generate(cfg, jou: Journal, out_path: Path, selected_nodes=None):
+    tree_graph_str = json.dumps(cfg_to_tree_struct(cfg, jou, selected_nodes))
     html = generate_html(tree_graph_str)
     with open(out_path, "w") as f:
         f.write(html)

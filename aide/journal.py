@@ -7,6 +7,7 @@ The journal is the core datastructure in AIDE that contains:
 ...
 """
 
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from dataclasses_json import DataClassJsonMixin
 from .interpreter import ExecutionResult
 from .utils.metric import MetricValue
 from .utils.response import trim_long_string
+
+logger = logging.getLogger("aide")
 
 
 @dataclass(eq=False)
@@ -138,6 +141,7 @@ class Journal(DataClassJsonMixin):
     """A collection of nodes representing the solution tree."""
 
     nodes: list[Node] = field(default_factory=list)
+    last_selected_nodes: list[Node] = field(default_factory=list)  # Track nodes used in last summary
     # eda: InteractiveSession = field(default_factory=lambda: InteractiveSession())
 
     def __getitem__(self, idx: int) -> Node:
@@ -181,12 +185,8 @@ class Journal(DataClassJsonMixin):
             nodes = self.nodes
         return max(nodes, key=lambda n: n.metric)
 
-    def generate_summary(self, include_code: bool = True, num_selected_nodes: int = 5) -> str:
-        """Generate a summary of the journal for the agent, sampling good nodes with probability proportional to their rank."""
-        good_nodes = self.good_nodes
-        if not good_nodes:
-            return ""
-        # Iterative rank-based sampling with diversity check and no repeats
+    def _generate_summary_genetic(self, good_nodes: list[Node], include_code: bool, num_selected_nodes: int) -> list[Node]:
+        """Generate summary using genetic/evolutionary approach with diversity sampling."""
         def code_similarity(a, b):
             # Use SequenceMatcher ratio as a simple similarity metric (1.0 = identical)
             return difflib.SequenceMatcher(None, a, b).ratio()
@@ -197,6 +197,7 @@ class Journal(DataClassJsonMixin):
         selected_nodes = []
         k = min(num_selected_nodes, len(good_nodes))
         max_similarity = 0.8  # threshold for "too close" code
+        
         for _ in range(k):
             candidates = list(available_nodes)
             if not candidates:
@@ -222,13 +223,56 @@ class Journal(DataClassJsonMixin):
                 chosen = max(available_nodes, key=lambda n: node_to_weight[n])
                 selected_nodes.append(chosen)
                 available_nodes.remove(chosen)
+        
+        return selected_nodes
 
+    def _generate_summary_greedy(self, good_nodes: list[Node], include_code: bool, num_selected_nodes: int) -> list[Node]:
+        """Generate summary using simple greedy approach - return all good nodes."""
+        return good_nodes
+
+    def generate_summary(self, include_code: bool = True, num_selected_nodes: int = 5, use_genetic_approach: bool = True, return_selected_nodes: bool = False):
+        """
+        Generate a summary of the journal for the agent.
+        
+        Args:
+            include_code: Whether to include code in the summary
+            num_selected_nodes: Maximum number of nodes to include (only used with genetic approach)
+            use_genetic_approach: If True, uses diversity sampling with genetic evolution approach.
+                                If False, uses simple greedy approach (all good nodes).
+            return_selected_nodes: If True, returns (summary_text, selected_nodes) tuple instead of just summary_text
+        """
+        good_nodes = self.good_nodes
+        if not good_nodes:
+            if return_selected_nodes:
+                return "", []
+            return ""
+        
+        # Select nodes using the chosen strategy
+        if use_genetic_approach:
+            selected_nodes = self._generate_summary_genetic(good_nodes, include_code, num_selected_nodes)
+        else:
+            selected_nodes = self._generate_summary_greedy(good_nodes, include_code, num_selected_nodes)
+
+        # Log which nodes were selected for the summary
+        selected_node_numbers = [n.step for n in selected_nodes]
+        logger.info(f"Journal summary using {'genetic' if use_genetic_approach else 'greedy'} approach: "
+                   f"Selected nodes {selected_node_numbers} out of {len(good_nodes)} good nodes")
+
+        # Store selected nodes for tree visualization
+        self.last_selected_nodes = selected_nodes
+
+        # Format the summary
         summary = []
         for n in selected_nodes:
-            summary_part = f"Design: {n.plan}\n"
+            summary_part = f"Node #{n.step}: {n.plan}\n"
             if include_code:
                 summary_part += f"Code: {n.code}\n"
             summary_part += f"Results: {n.analysis}\n"
             summary_part += f"Validation Metric: {getattr(n.metric, 'value', 'N/A')}\n"
             summary.append(summary_part)
-        return "\n-------------------------------\n".join(summary)
+        
+        summary_text = "\n-------------------------------\n".join(summary)
+        
+        if return_selected_nodes:
+            return summary_text, selected_nodes
+        return summary_text

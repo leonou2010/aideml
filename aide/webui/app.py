@@ -418,10 +418,13 @@ class WebUI:
 
         journal_data = [
             {
+                "node_number": node.step,
                 "step": node.step,
                 "code": str(node.code),
                 "metric": str(node.metric.value) if node.metric else None,
                 "is_buggy": node.is_buggy,
+                "plan": str(node.plan) if hasattr(node, 'plan') and node.plan else "No plan",
+                "analysis": str(node.analysis) if hasattr(node, 'analysis') and node.analysis else "No analysis",
             }
             for node in experiment.journal.nodes
         ]
@@ -485,7 +488,7 @@ class WebUI:
     @staticmethod
     def render_journal(results):
         """
-        Display the experiment journal as JSON.
+        Display the experiment journal with enhanced formatting showing node numbers.
 
         Args:
             results (dict): The results dictionary containing the journal.
@@ -493,8 +496,25 @@ class WebUI:
         if "journal" in results:
             try:
                 journal_data = json.loads(results["journal"])
-                formatted_journal = json.dumps(journal_data, indent=2)
-                st.code(formatted_journal, language="json")
+                
+                # Display summary of nodes
+                st.write(f"**Total Nodes**: {len(journal_data)}")
+                good_nodes = [n for n in journal_data if not n.get('is_buggy', True)]
+                st.write(f"**Good Nodes**: {len(good_nodes)}")
+                
+                # Show condensed view with node numbers
+                with st.expander("📋 Node Summary", expanded=True):
+                    for node in journal_data:
+                        node_num = node.get('node_number', node.get('step', 'Unknown'))
+                        metric = node.get('metric', 'N/A')
+                        status = "✅ Good" if not node.get('is_buggy', True) else "❌ Buggy"
+                        st.write(f"**Node #{node_num}**: {status} | Metric: {metric}")
+                
+                # Show full JSON in expander
+                with st.expander("🔍 Full Journal Data (JSON)", expanded=False):
+                    formatted_journal = json.dumps(journal_data, indent=2)
+                    st.code(formatted_journal, language="json")
+                    
             except json.JSONDecodeError:
                 st.code(results["journal"], language="json")
         else:

@@ -52,6 +52,8 @@ class AgentConfig:
     exec_guidelines: bool
     data_desc: bool
     prev_scripts: int
+    include_code: bool
+    greedy: bool
 
     code: StageConfig
     feedback: StageConfig
@@ -199,7 +201,7 @@ def save_run(cfg: Config, journal):
     # save config
     OmegaConf.save(config=cfg, f=cfg.log_dir / "config.yaml")
     # create the tree + code visualization
-    tree_export.generate(cfg, journal, cfg.log_dir / "tree_plot.html")
+    tree_export.generate(cfg, journal, cfg.log_dir / "tree_plot.html", journal.last_selected_nodes)
     # save the best found solution
     best_node = journal.get_best_node(only_good=False)
     with open(cfg.log_dir / "best_solution.py", "w") as f:

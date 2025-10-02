@@ -27,7 +27,7 @@ exec:
 generate_report: True
 # LLM settings for final report from journal
 report:
-  model: gpt-4.1
+  model: gpt-5 #gpt-4.1, gpt-5
   temp: 1.0
 
 # agent hyperparams
@@ -46,15 +46,19 @@ agent:
   data_desc: True
   # how many previous scripts to include in the prompt
   prev_scripts: 5
+  # agent only see plan or also codes when writing summaries
+  include_code: True
+  # agent explore greedy or genetic
+  greedy: False
 
   # LLM settings for coding
   code:
-    model: o4-mini
+    model: gpt-5 #o4-mini, gpt-5
     temp: 0.5
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-4.1-mini # change to gpt-5
+    model: gpt-5 # change to gpt-5 gpt-4.1-mini
     temp: 0.5
 
   # hyperparameters for the tree search

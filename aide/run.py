@@ -53,15 +53,16 @@ def journal_to_rich_tree(journal: Journal):
     best_node = journal.get_best_node()
 
     def append_rec(node: Node, tree):
+        node_num = getattr(node, 'step', '?')
         if node.is_buggy:
-            s = "[red]◍ bug"
+            s = f"[red]#{node_num} ◍ bug"
         else:
             style = "bold " if node is best_node else ""
 
             if node is best_node:
-                s = f"[{style}green]● {node.metric.value:.3f} (best)"
+                s = f"[{style}green]#{node_num} ● {node.metric.value:.3f} (best)"
             else:
-                s = f"[{style}green]● {node.metric.value:.3f}"
+                s = f"[{style}green]#{node_num} ● {node.metric.value:.3f}"
 
         subtree = tree.add(s)
         for child in node.children:
@@ -157,7 +158,7 @@ def run():
 
     if cfg.generate_report:
         print("Generating final report from journal...")
-        report = journal2report(journal, task_desc, cfg.report)
+        report = journal2report(journal, task_desc, cfg.report) # this generate the final report
         print(report)
         report_file_path = cfg.log_dir / "report.md"
         with open(report_file_path, "w") as f:

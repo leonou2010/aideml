@@ -25,7 +25,7 @@ review_func_spec = FunctionSpec(
         "properties": {
             "is_bug": {
                 "type": "boolean",
-                "description": "true if the output log shows that the execution failed or has some bug, or output is empty, or 'Warning: Model may be overfitting' is in the output, otherwise false.",
+                "description": "Returns true if the output log indicates a failure, contains bugs, is empty, or the metrics doesn't make sense (ie, zero < metrics < 1), includes the message 'Warning: Model may be overfitting,' or lacks overfitting checking. Otherwise, it returns false."
             },
             "summary": {
                 "type": "string",
@@ -61,6 +61,10 @@ class Agent:
         self.data_preview: str | None = None
         self.exec_guidelines: str | None = None
         self.data_desc: str | None = None
+
+        self.task_desc = data_preview.add_task_desc(
+            self.cfg.workspace_dir, task_desc=self.task_desc
+            )
 
     def search_policy(self) -> Node | None:
         """Select a node to work on (or None to draft a new node)."""
@@ -98,23 +102,25 @@ class Agent:
     @property
     def _prompt_environment(self):
         pkgs = [
-            "numpy",
-            "pandas",
-            "scikit-learn",
-            "statsmodels",
-            "xgboost",
-            "lightGBM",
-            "torch",
-            "torchvision",
-            "torch-geometric",
-            "bayesian-optimization",
-            "timm",
+            "numpy=1.26.2",
+            "pandas=2.1.4",
+            "scikit-learn=1.7.2",
+            "statsmodels=0.14.5",
+            "xgboost=3.0.5",
+            "lightGBM=4.6.0",
+            "torch=2.2.2",
+            "torchvision=0.17.2",
+            "torch-geometric=2.6.1",
+            "bayesian-optimization=3.1.0",
+            "timm=1.0.19",
         ]
         random.shuffle(pkgs)
         pkg_str = ", ".join([f"`{p}`" for p in pkgs])
 
         env_prompt = {
-            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow."
+            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}."
+            "EXTREMELY IMPORTANT: PLEASE AWARE THE PACKAGE VERSION, DONT WRITE VERSION INCOMPATIBLE CODE."
+            "Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow."
         }
         return env_prompt
 
@@ -122,9 +128,9 @@ class Agent:
     def _prompt_impl_guideline(self):
         impl_guideline = [
             "The code should **implement the proposed solution** and **print the value of the evaluation metric computed on a hold-out validation set**.",
+            "EXTREMELY IMPORTANT: DO NOT FORGET TO PERFORM THE CROSS VALIDATION AND PRINT THE METRIC VALUE, IT IS CRUCIAL FOR EVALUATION.",
             "The code should be a single-file python program that is self-contained and can be executed as-is.",
-            "No parts of the code should be skipped, don't terminate the before finishing the script.",
-            "Your response should only contain a single code block.",
+            "No parts of the code should be skipped, don't terminate before finishing the script.",
             f"Be aware of the running time of the code, it should complete within {humanize.naturaldelta(self.cfg.exec.timeout)}.",
             'All the provided input data is stored in "./input" directory.',
             '**If there is test data provided for this task, please save the test predictions in a `submission.csv` file in the "./working" directory as described in the task description** This is extremely important since this file is used for grading/evaluation. DO NOT FORGET THE submission.csv file!',
@@ -177,6 +183,12 @@ class Agent:
         return "", completion_text  # type: ignore
 
     def _draft(self) -> Node:
+        summary, selected_nodes = self.journal.generate_summary(
+            num_selected_nodes=self.acfg.prev_scripts,
+            include_code=self.acfg.include_code,
+            return_selected_nodes=True
+        )
+        
         prompt: Any = {
             "Introduction": (
                 "You are a Kaggle grandmaster attending a competition. "
@@ -185,9 +197,7 @@ class Agent:
             ),
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
-            "Memory": self.journal.generate_summary(
-                num_selected_nodes=self.acfg.prev_scripts
-                ),
+            "Memory": summary,
             "Instructions": {},
         }
         prompt["Instructions"] |= self._prompt_resp_fmt
@@ -220,21 +230,28 @@ class Agent:
             prompt["Data Overview"] = self.data_preview
 
         plan, code = self.plan_and_code_query(prompt)
-        return Node(plan=plan, code=code)
+        node = Node(plan=plan, code=code)
+        node.seen_nodes = [n.step for n in selected_nodes] if selected_nodes else []
+        return node
 
     def _improve(self, parent_node: Node) -> Node:
+        summary, selected_nodes = self.journal.generate_summary(
+            num_selected_nodes=self.acfg.prev_scripts,
+            include_code=self.acfg.include_code,
+            return_selected_nodes=True
+        )
+        
         prompt: Any = {
             "Introduction": strong_prompts.get_critique_prompt(),
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
-            "Memory": self.journal.generate_summary(
-                num_selected_nodes=self.acfg.prev_scripts
-                ),
+            "Memory": summary,
             "Instructions": {},
         }
-        # prompt["Previous solution"] = { # we are putting everything in memory
-        #     "Code": wrap_code(parent_node.code),
-        # }
+        if self.acfg.greedy:
+            prompt["Previous solution"] = { # we are putting everything in memory
+                "Code": wrap_code(parent_node.code),
+            }
 
         prompt["Instructions"] |= self._prompt_resp_fmt
         prompt["Instructions"] |= {
@@ -254,17 +271,20 @@ class Agent:
             }
 
         plan, code = self.plan_and_code_query(prompt)
-        return Node(
+        node = Node(
             plan=plan,
             code=code,
             parent=parent_node,
         )
+        node.seen_nodes = [n.step for n in selected_nodes] if selected_nodes else []
+        return node
 
     def _debug(self, parent_node: Node) -> Node:
         prompt: Any = {
             "Introduction": (
                 "You are a Kaggle grandmaster attending a competition. "
-                "Your previous solution had a bug, so based on the information below, you should revise it in order to fix this bug. "
+                "The previous solution contains a bug, exhibits package version incompatibility, or may be overfitted without implementing cross-validation. "
+                "Please revise the code based on the following information to address these issues and ensure it functions correctly."
                 "Your response should be an implementation outline in natural language,"
                 " followed by a single markdown code block which implements the bugfix/solution."
             ),
@@ -298,6 +318,9 @@ class Agent:
 
     def update_data_desc(self):
         self.data_desc = data_preview.gen_data_desc(self.cfg.workspace_dir)
+
+    def update_task_desc(self):
+        self.task_desc = data_preview.add_task_desc(self.task_desc)
 
     def step(self, exec_callback: ExecCallbackType):
         if not self.journal.nodes or self.data_preview is None:
@@ -341,7 +364,8 @@ class Agent:
             "Task description": self.task_desc,
             "Implementation": wrap_code(node.code),
             "Execution output": wrap_code(node.term_out, lang=""),
-            "Check Overfitting": "If 'Warning: Model may be overfitting' is in the output, then the model is buggy.",
+            "Check Overfitting": "EXTREMELY IMPORTANT: If 'Warning: Model may be overfitting' is in the output or "
+            "If the metrics value doesn't make sense (ie, zero < metrics < 1), then the model is buggy.",
         }
 
         response = cast(

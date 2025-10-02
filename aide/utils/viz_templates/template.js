@@ -1,5 +1,20 @@
+// @ts-nocheck
+/* eslint-disable */
+/* global canvas, createCanvas, windowWidth, windowHeight, mouseX, mouseY, width, height, dist, mouseIsPressed, 
+   hljs, awaitingPostResizeOps, resizeCanvas, globalTime, frameRate, frameCount, millis, cos, min, PI, 
+   deltaTime, cursor, ARROW, HAND, background, translate, scale, fill, noStroke, square, textAlign, 
+   CENTER, textSize, text, stroke, strokeWeight, noFill, bezier, rect, lerpColor, color, bezierPoint */
+
+/*
+ * TEMPLATE FILE - NOT VALID JAVASCRIPT UNTIL PROCESSED
+ * This file contains <placeholder> tokens that get replaced with actual data
+ * All syntax errors are expected and will be resolved during build
+ */
+
 const bgCol = "#F2F0E7";
 const accentCol = "#fd4578";
+
+let selectedNodeIndex = -1;  // Track which node is currently selected
 
 hljs.initHighlightingOnLoad();
 
@@ -23,10 +38,10 @@ const setCodeAndPlan = (code, plan) => {
   }
 };
 
-windowResized = () => {
+function windowResized() {
   resizeCanvas(...updateTargetDims());
   awaitingPostResizeOps = true;
-};
+}
 
 const animEase = (t) => 1 - (1 - Math.min(t, 1.0)) ** 5;
 
@@ -42,7 +57,8 @@ let manualSelection = false;
 
 let currentElemInd = 0;
 
-let treeStructData = <placeholder>
+// eslint-disable-next-line
+let treeStructData = /*<placeholder>*/ {};
 
 let lastClick = 0;
 let firstFrameTime = undefined;
@@ -52,70 +68,169 @@ let edges = [];
 
 let lastScrollPos = 0;
 
-setup = () => {
-  canvas = createCanvas(...updateTargetDims());
+const updateSummaryPanel = () => {
+  // Update selected nodes
+  const summaryList = document.getElementById("summary-list");
+  if (summaryList && treeStructData.selected_for_summary) {
+    let summaryHtml = "";
+    let hasSelected = false;
+    
+    for (let i = 0; i < treeStructData.selected_for_summary.length; i++) {
+      if (treeStructData.selected_for_summary[i]) {
+        hasSelected = true;
+        const nodeClass = treeStructData.selected_for_summary[i] ? "selected" : "";
+        summaryHtml += `<div class="summary-node ${nodeClass}">Node #${i}</div>`;
+      }
+    }
+    
+    if (!hasSelected) {
+      summaryHtml = "No nodes selected yet...";
+    }
+    
+    summaryList.innerHTML = summaryHtml;
+  }
+  
+  // Update metrics
+  const metricsList = document.getElementById("metrics-list");
+  if (metricsList && treeStructData.metric_values) {
+    let metricsHtml = "";
+    let bestMetric = -1;
+    let bestValue = -Infinity;
+    
+    // Find best metric (assuming higher is better, adjust if needed)
+    for (let i = 0; i < treeStructData.metrics.length; i++) {
+      if (!treeStructData.is_buggy[i] && treeStructData.metrics[i] > bestValue) {
+        bestValue = treeStructData.metrics[i];
+        bestMetric = i;
+      }
+    }
+    
+    for (let i = 0; i < treeStructData.metric_values.length; i++) {
+      let metricClass = "";
+      if (treeStructData.is_buggy && treeStructData.is_buggy[i]) {
+        metricClass = "buggy";
+      } else if (i === bestMetric) {
+        metricClass = "best";
+      }
+      
+      metricsHtml += `<div class="metric-item ${metricClass}">Node #${i}: ${treeStructData.metric_values[i]}</div>`;
+    }
+    
+    if (metricsHtml === "") {
+      metricsHtml = "No metrics available...";
+    }
+    
+    metricsList.innerHTML = metricsHtml;
+  }
 };
 
-class Node {
-  x;
-  y;
-  size;
-  xT;
-  yT;
-  xB;
-  yB;
-  treeInd;
-  color;
-  relSize;
-  animationStart = Number.MAX_VALUE;
-  animationProgress = 0;
-  isStatic = false;
-  hasChildren = false;
-  isRootNode = true;
-  isStarred = false;
-  selected = false;
-  renderSize = 10;
-  edges = [];
-  bgCol;
+const updateDynamicPanel = (nodeIndex) => {
+  const summaryList = document.getElementById("summary-list");
+  
+  if (nodeIndex === -1 || !summaryList) {
+    if (summaryList) {
+      summaryList.innerHTML = "Click a node to see which nodes it referenced";
+    }
+    return;
+  }
+  
+  // Show which nodes this selected node "saw"
+  const seenNodes = treeStructData.seen_nodes_per_node ? treeStructData.seen_nodes_per_node[nodeIndex] : [];
+  
+  let summaryHTML = `<div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">Node #${nodeIndex} Referenced:</div>`;
+  if (!seenNodes || seenNodes.length === 0) {
+    summaryHTML += `<div style="padding: 0.5em;">Node #${nodeIndex} referenced no previous nodes</div>`;
+  } else {
+    summaryHTML += '<div>';
+    
+    // Find best metric among seen nodes
+    let bestSeenMetric = -Infinity;
+    let bestSeenNodeId = -1;
+    seenNodes.forEach(seenNodeId => {
+      if (!treeStructData.is_buggy[seenNodeId] && treeStructData.metrics[seenNodeId] > bestSeenMetric) {
+        bestSeenMetric = treeStructData.metrics[seenNodeId];
+        bestSeenNodeId = seenNodeId;
+      }
+    });
+    
+    seenNodes.forEach(seenNodeId => {
+      const seenMetric = treeStructData.metric_values[seenNodeId];
+      const seenIsBuggy = treeStructData.is_buggy[seenNodeId];
+      
+      let nodeClass = "summary-node";
+      if (seenIsBuggy) {
+        nodeClass += " buggy";
+      } else if (seenNodeId === bestSeenNodeId) {
+        nodeClass += " best";
+      }
+      
+      summaryHTML += `<div class="${nodeClass}">Node #${seenNodeId}: ${seenMetric}</div>`;
+    });
+    summaryHTML += '</div>';
+  }
+  
+  summaryList.innerHTML = summaryHTML;
+};
 
-  constructor(x, y, relSize, treeInd) {
+function setup() {
+  const canvasContainer = document.getElementById("canvas-container");
+  canvas = createCanvas(...updateTargetDims());
+  if (canvasContainer) {
+    canvasContainer.appendChild(canvas.canvas);
+  }
+  updateSummaryPanel();
+  updateDynamicPanel(-1);
+}
+
+class Node {
+  constructor(x, y, relSize, treeInd, isSelectedForSummary = false) {
     const minSize = 35;
     const maxSize = 60;
 
     const maxColor = 10;
     const minColor = 125;
 
-    this.relSize = relSize;
-    this.treeInd = treeInd;
-    this.size = minSize + (maxSize - minSize) * relSize;
-    this.color = minColor + (maxColor - minColor) * relSize;
-    this.bgCol = Math.round(Math.max(this.color / 2, 0));
-
+    // Initialize all properties in constructor
     this.x = x;
     this.y = y;
+    this.size = minSize + (maxSize - minSize) * relSize;
     this.xT = x;
     this.yT = y - this.size / 2;
     this.xB = x;
     this.yB = y + this.size / 2;
+    this.treeInd = treeInd;
+    this.color = minColor + (maxColor - minColor) * relSize;
+    this.relSize = relSize;
+    this.animationStart = Number.MAX_VALUE;
+    this.animationProgress = 0;
+    this.isStatic = false;
+    this.hasChildren = false;
+    this.isRootNode = true;
+    this.isStarred = false;
+    this.selected = false;
+    this.renderSize = 10;
+    this.edges = [];
+    this.bgCol = Math.round(Math.max(this.color / 2, 0));
+    this.isSelectedForSummary = isSelectedForSummary;
 
     nodes.push(this);
   }
 
-  startAnimation = (offset = 0) => {
+  startAnimation(offset = 0) {
     if (this.animationStart == Number.MAX_VALUE)
       this.animationStart = globalTime + offset;
-  };
+  }
 
-  child = (node) => {
+  child(node) {
     let edge = new Edge(this, node);
     this.edges.push(edge);
     edges.push(edge);
     this.hasChildren = true;
     node.isRootNode = false;
     return node;
-  };
+  }
 
-  render = () => {
+  render() {
     if (globalTime - this.animationStart < 0) return;
 
     const mouseXlocalCoords = (mouseX - width / 2) / scaleFactor;
@@ -127,10 +242,12 @@ class Node {
     if (isMouseOver && mouseIsPressed) {
       nodes.forEach((n) => (n.selected = false));
       this.selected = true;
+      selectedNodeIndex = this.treeInd;
       setCodeAndPlan(
         treeStructData.code[this.treeInd],
         treeStructData.plan[this.treeInd],
       );
+      updateDynamicPanel(this.treeInd);
       manualSelection = true;
     }
 
@@ -155,6 +272,9 @@ class Node {
     if (this.selected) {
       fill(accentCol);
     }
+    if (this.isSelectedForSummary) {
+      fill("#FFD700"); // Gold color for nodes selected for summary
+    }
 
     noStroke();
     square(
@@ -168,11 +288,8 @@ class Node {
     textAlign(CENTER, CENTER);
     textSize(this.renderSize / 2);
     fill(255);
-    // fill(lerpColor(color(accentCol), color(255), this.animationProgress))
-    text("{ }", this.x, this.y - 1);
-    // DEBUG PRINT:
-    // text(round(this.relSize, 2), this.x, this.y - 1)
-    // text(this.treeInd, this.x, this.y + 15)
+    // Show node number instead of "{ }"
+    text("#" + this.treeInd, this.x, this.y - 1);
 
     const dotAnimThreshold = 0.85;
     if (this.isStarred && this.animationProgress >= dotAnimThreshold) {
@@ -214,33 +331,31 @@ class Node {
           e.startAnimation((i / this.edges.length) ** 2 * 1000);
         });
     }
-  };
+  }
 }
 
 class Edge {
-  nodeT;
-  nodeB;
-  animX = 0;
-  animY = 0;
-  animationStart = Number.MAX_VALUE;
-  animationProgress = 0;
-  isStatic = false;
-  weight = 0;
-
   constructor(nodeT, nodeB) {
     this.nodeT = nodeT;
     this.nodeB = nodeB;
+    this.animX = 0;
+    this.animY = 0;
+    this.animationStart = Number.MAX_VALUE;
+    this.animationProgress = 0;
+    this.isStatic = false;
     this.weight = 2 + nodeB.relSize * 1;
   }
 
-  color = () => this.nodeB.color;
+  color() {
+    return this.nodeB.color;
+  }
 
-  startAnimation = (offset = 0) => {
+  startAnimation(offset = 0) {
     if (this.animationStart == Number.MAX_VALUE)
       this.animationStart = globalTime + offset;
-  };
+  }
 
-  render = () => {
+  render() {
     if (globalTime - this.animationStart < 0) return;
 
     if (!this.isStatic) {
@@ -288,10 +403,10 @@ class Edge {
       this.animX,
       this.animY,
     );
-  };
+  }
 }
 
-draw = () => {
+function draw() {
   cursor(ARROW);
   frameRate(120);
   if (!firstFrameTime && frameCount <= 1) {
@@ -315,6 +430,7 @@ draw = () => {
         20 + spacingHeight * lay[1] - spacingHeight / 2,
         1 - treeStructData.metrics[index],
         index,
+        treeStructData.selected_for_summary ? treeStructData.selected_for_summary[index] : false,
       );
     });
     treeStructData.edges.forEach((ind) => {
@@ -327,7 +443,8 @@ draw = () => {
     setCodeAndPlan(
       treeStructData.code[0],
       treeStructData.plan[0],
-    )
+    );
+    updateSummaryPanel();
   }
 
   const staticNodes = nodes.filter(

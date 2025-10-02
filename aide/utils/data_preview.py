@@ -173,3 +173,27 @@ def gen_data_desc(base_path):
         with open(desc_path, encoding='utf-8') as f:
             return f.read()
     return None # check if it read the file correctly
+
+def add_task_desc(base_path, task_desc = ""):
+    """
+    Reads the contents of task_description.txt from the input directory and appends it to the provided task_desc.
+    Returns the enhanced task description, or the original task_desc if the file does not exist.
+    """
+    desc_file_name = "task_description.txt"
+    for fn in _walk(base_path):
+        if fn.name == desc_file_name:
+            desc_path = fn
+            break
+    else:
+        logger.warning(f"{desc_file_name} not found in {base_path}")
+        return task_desc
+
+    if desc_path.exists():
+        with open(desc_path, encoding='utf-8') as f:
+            additional_desc = f.read().strip()
+            if additional_desc:
+                return f"{task_desc}\n\nAdditional Task Information:\n{additional_desc}"
+            else:
+                return task_desc
+        
+    return task_desc # return original task_desc if file doesn't exist

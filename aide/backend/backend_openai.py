@@ -237,3 +237,21 @@ def query(
     logger.info(f"OpenAI API response: {output}")
 
     return output, req_time, in_tokens, out_tokens, info
+
+
+if __name__ == "__main__":
+    import pyperclip
+
+    _setup_openai_client()
+    try:
+        # Minimal test prompt
+        response = _client.chat.completions.create(
+            messages=[{"role": "user", "content": "Hello OpenAI, are you working?"}],
+            model="gpt-5"
+        )
+        print("API call succeeded!")
+        print("Response:", response.choices[0].message.content) # tested for gpt-5, works, sep6
+        pyperclip.copy(response.choices[0].message.content)
+        print("Response copied to clipboard!")
+    except Exception as e:
+        print("API call failed:", e)
