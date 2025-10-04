@@ -94,8 +94,8 @@ def get_overfitting_check_prompt():
     return (
         "#### 5. Mandatory Overfitting Check \n"
         "EXTREMELY IMPORTANT: Before creating the submission file, you must implement a function to check and quantify model overfitting. \n"
-        "Compare the final in-sample score against the out-of-sample cross-validation score and print 'Warning: Model may be overfitting.', "
-        "if a significant performance gap is detected."
+        "Compare the subsample score against the out-of-sample cross-validation score and print 'Warning: Model may be overfitting.', "
+        "if the relative difference between them exceeds 20 percentage."
     )
 
 def get_bug_check_prompt():
