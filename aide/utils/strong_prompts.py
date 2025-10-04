@@ -10,7 +10,7 @@ def get_full_exec_guidelines_prompt():
         + get_data_cleaning_processing_prompt() + "\n\n"
         + get_feature_engineering_prompt() + "\n\n"
         + get_modeling_prompt() + "\n\n"
-        + get_overfitting_check_prompt() + "\n\n"
+        # + get_overfitting_check_prompt() + "\n\n"
         + get_bug_check_prompt()
     )
 
@@ -94,8 +94,9 @@ def get_overfitting_check_prompt():
     return (
         "#### 5. Mandatory Overfitting Check \n"
         "EXTREMELY IMPORTANT: Before creating the submission file, you must implement a function to check and quantify model overfitting. \n"
-        "Compare the subsample score against the out-of-sample cross-validation score and print 'Warning: Model may be overfitting.', "
-        "if the relative difference between them exceeds 20 percentage."
+        "To save compute, approximate subsample_score via 30-50 percentage of a random subset. \n"
+        "Compare the subsample score against the out-of-sample cross-validation score and print 'Warning: Model is overfitting.', "
+        "if the relative difference between them exceeds 20 percent."
     )
 
 def get_bug_check_prompt():
@@ -103,7 +104,7 @@ def get_bug_check_prompt():
     Returns a prompt for bug checking.
     """
     return (
-        "#### 6. Bug Check \n"
+        "#### 5. Bug Check \n"
         "After generating, review the code for any possible bugs or incorrect package version syntax errors."
     )
 
@@ -119,9 +120,30 @@ def get_critique_prompt():
     )
 
 
+def get_prompt_environment():
+    pkgs = [
+        "numpy=1.26.2",
+        "pandas=2.1.4",
+        "scikit-learn=1.7.2",
+        "statsmodels=0.14.5",
+        "xgboost=3.0.5",
+        "lightGBM=4.6.0",
+        "torch=2.2.2",
+        "torchvision=0.17.2",
+        "torch-geometric=2.6.1",
+        "bayesian-optimization=3.1.0",
+        "timm=1.0.19",
+    ]
+    pkg_str = ", ".join([f"`{p}`" for p in pkgs])
 
-
-
-
-
-
+    # Return a list of strings (not a dict) so compile_prompt_to_md can bullet them
+    return [
+        f"Installed Packages: Your solution must target exactly these versions: {pkg_str}.",
+        "Version policy (hard constraints): Do NOT use APIs outside these versions. "
+        "Do NOT install/upgrade packages at runtime. If an API may differ across minor versions, "
+        "add a small compatibility shim using try/except or version checks, and choose the safer, older-call pattern by default.",
+        "Compatibility requirements: At the start of the script, include a comment section that specifies the versions of "
+        "numpy, pandas, scikit-learn, lightGBM/xgboost/torch used.",
+        "General note: All other packages are available, but you must still adhere to the above version policy. "
+        "For neural networks prefer PyTorch over TensorFlow.",
+    ]

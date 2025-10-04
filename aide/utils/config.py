@@ -23,6 +23,7 @@ logging.basicConfig(
         logging.FileHandler("aide.log")
     ]
 )
+
 logger = logging.getLogger("aide")
 logger.setLevel(logging.DEBUG)
 
@@ -41,6 +42,9 @@ class SearchConfig:
     max_debug_depth: int
     debug_prob: float
     num_drafts: int
+    bug_context_count: int | None = None
+    debug_recent_first: bool = True
+    include_bug_context: bool = True
 
 
 @dataclass

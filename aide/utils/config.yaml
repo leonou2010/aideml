@@ -27,7 +27,7 @@ exec:
 generate_report: True
 # LLM settings for final report from journal
 report:
-  model: gpt-5-codex #gpt-4.1, gpt-5
+  model: gpt-5 #gpt-4.1, gpt-5
   temp: 1.0
 
 # agent hyperparams
@@ -35,7 +35,7 @@ agent:
   # how many improvement iterations to run
   steps: 30
   # whether to instruct the agent to use CV (set to 1 to disable)
-  k_fold_validation: 5
+  k_fold_validation: 10
   # whether to instruct the agent to generate a prediction function
   expose_prediction: False
   # whether to provide the agent with a preview of the data
@@ -58,11 +58,14 @@ agent:
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-5-codex # change to gpt-5 gpt-4.1-mini
+    model: gpt-5 # change to gpt-5 gpt-4.1-mini
     temp: 0.5
 
   # hyperparameters for the tree search
   search:
     max_debug_depth: 10
     debug_prob: 0.5
-    num_drafts: 5 # changed from 5 to 10
+    num_drafts: 3 # changed from 5 to 10
+    include_bug_context: true # include past buggy nodes in Memory; set false to hide completely
+    bug_context_count: -1 # how many buggy nodes to include (most recent first); 0 = none, <0 = all
+    debug_recent_first: true # when debugging, prefer the most recent buggy node

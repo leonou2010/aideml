@@ -25,11 +25,11 @@ review_func_spec = FunctionSpec(
         "properties": {
             "is_bug": {
                 "type": "boolean",
-                "description": "Returns true if the output log indicates a failure, contains bugs, is empty, or the metrics doesn't make sense (ie, zero < metrics < 1), includes the message 'Warning: Model may be overfitting,' or lacks overfitting checking. Otherwise, it returns false."
+                "description": "Returns true if the output log indicates a failure, contains bugs, is empty, or the metrics doesn't make sense (ie, zero < metrics < 1). Otherwise, it returns false."
             },
             "summary": {
                 "type": "string",
-                "description": "if there is a bug, propose a fix. Otherwise, write a short summary (2-3 sentences) describing the empirical findings.",
+                "description": "if there is a bug, propose a fix. Otherwise, write a short summary (5-10 sentences) describing the empirical findings.",
             },
             "metric": {
                 "type": "number",
@@ -66,6 +66,47 @@ class Agent:
             self.cfg.workspace_dir, task_desc=self.task_desc
             )
 
+    def _format_bug_node_for_memory(self, n: Node) -> str:
+        """Format a buggy node as a compact string for Memory."""
+        lines = [f"**Node #{n.step}**"]
+        
+        if n.plan:
+            plan_preview = n.plan[:200] + "..." if len(n.plan) > 200 else n.plan
+            lines.append(f"Plan: {plan_preview}")
+        
+        if n.exc_type:
+            lines.append(f"Error: {n.exc_type}")
+        
+        if n.code:
+            code_preview = n.code[:400] + "\n..." if len(n.code) > 400 else n.code
+            lines.append(f"Code:\n```python\n{code_preview}\n```")
+        
+        if n.term_out:
+            # Show last 300 chars of output
+            output_preview = "..." + n.term_out[-300:] if len(n.term_out) > 300 else n.term_out
+            lines.append(f"Output:\n```\n{output_preview}\n```")
+        
+        metric_val = getattr(getattr(n, "metric", None), "value", None)
+        if metric_val is not None:
+            lines.append(f"Metric: {metric_val}")
+        
+        return "\n\n".join(lines)
+
+    def _buggy_nodes_for_memory(self) -> list[str]:
+        """Return formatted strings of buggy nodes, limited by search.bug_context_count (most recent first)."""
+        if not getattr(self.acfg.search, "include_bug_context", True):
+            return []
+        buggy_nodes = sorted(self.journal.buggy_nodes, key=lambda n: n.step)
+        count = getattr(self.acfg.search, "bug_context_count", None)
+        if count is None:
+            return [self._format_bug_node_for_memory(n) for n in buggy_nodes]
+        if count == 0:
+            return []
+        if count < 0:
+            return [self._format_bug_node_for_memory(n) for n in buggy_nodes]
+        selected = buggy_nodes[-count:]
+        return [self._format_bug_node_for_memory(n) for n in selected]
+
     def search_policy(self) -> Node | None:
         """Select a node to work on (or None to draft a new node)."""
         search_cfg = self.acfg.search
@@ -85,6 +126,9 @@ class Agent:
             ]
             if debuggable_nodes:
                 logger.debug("[search policy] debugging")
+                if getattr(search_cfg, "debug_recent_first", True):
+                    # pick the most recent by step
+                    return sorted(debuggable_nodes, key=lambda n: n.step)[-1]
                 return random.choice(debuggable_nodes)
             logger.debug("[search policy] not debugging by chance")
 
@@ -98,6 +142,21 @@ class Agent:
         greedy_node = self.journal.get_best_node()
         logger.debug("[search policy] greedy node selected")
         return greedy_node
+
+    @property
+    def recent_buggy_node_numbers(self) -> list[int]:
+        """Return buggy node step numbers honoring search.bug_context_count (most recent last)."""
+        if not getattr(self.acfg.search, "include_bug_context", True):
+            return []
+        buggy_nodes = sorted(self.journal.buggy_nodes, key=lambda n: n.step)
+        cnt = getattr(self.acfg.search, "bug_context_count", None)
+        if cnt is None:
+            return [n.step for n in buggy_nodes]
+        if cnt == 0:
+            return []
+        if cnt < 0:
+            return [n.step for n in buggy_nodes]
+        return [n.step for n in buggy_nodes][-cnt:]
 
     @property
     def _prompt_environment(self):
@@ -119,7 +178,8 @@ class Agent:
 
         env_prompt = {
             "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}."
-            "EXTREMELY IMPORTANT: PLEASE AWARE THE PACKAGE VERSION, DONT WRITE VERSION INCOMPATIBLE CODE."
+            "EXTREMELY IMPORTANT: Always ensure full compatibility with the specified library versions. "
+            "DO NOT write code that relies on features or syntax not supported by those versions."
             "Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow."
         }
         return env_prompt
@@ -154,7 +214,7 @@ class Agent:
     def _prompt_resp_fmt(self):
         return {
             "Response format": (
-                "Your response should be a step-by-step outline/sketch of your proposed solution in natural language (5-10 sentences), "
+                "Think step-by-step. Your response should be an outline/sketch of your proposed solution in natural language (5-10 sentences), "
                 "followed by a single markdown code block (wrapped in ```) which implements this solution and prints out the evaluation metric. "
                 "There should be no additional headings or text in your response. Just natural language text followed by a newline and then the markdown code block. "
             )
@@ -189,6 +249,15 @@ class Agent:
             return_selected_nodes=True
         )
         
+        # Build Memory with summary + optional buggy nodes context
+        memory: Any = summary
+        buggy_for_memory = self._buggy_nodes_for_memory()
+        if buggy_for_memory:
+            memory = {
+                "Summary of previous solutions": summary,
+                "Past buggy nodes": buggy_for_memory,
+            }
+
         prompt: Any = {
             "Introduction": (
                 "You are a Kaggle grandmaster attending a competition. "
@@ -197,7 +266,7 @@ class Agent:
             ),
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
-            "Memory": summary,
+            "Memory": memory,
             "Instructions": {},
         }
         prompt["Instructions"] |= self._prompt_resp_fmt
@@ -224,7 +293,8 @@ class Agent:
             }
 
         prompt["Instructions"] |= self._prompt_impl_guideline
-        prompt["Instructions"] |= self._prompt_environment
+        # prompt["Execution Environment"] = self._prompt_environment
+        prompt["Execution Environment"] = strong_prompts.get_prompt_environment()
 
         if self.acfg.data_preview:
             prompt["Data Overview"] = self.data_preview
@@ -241,11 +311,20 @@ class Agent:
             return_selected_nodes=True
         )
         
+        # Build Memory with summary + optional buggy nodes context
+        memory: Any = summary
+        buggy_for_memory = self._buggy_nodes_for_memory()
+        if buggy_for_memory:
+            memory = {
+                "Summary of previous solutions": summary,
+                "Past buggy nodes": buggy_for_memory,
+            }
+
         prompt: Any = {
             "Introduction": strong_prompts.get_critique_prompt(),
             "Task description": self.task_desc,
             "Data description": "" if (self.data_desc is None or not self.acfg.data_desc) else self.data_desc,
-            "Memory": summary,
+            "Memory": memory,
             "Instructions": {},
         }
         if self.acfg.greedy:
@@ -265,7 +344,8 @@ class Agent:
             ],
         }
         prompt["Instructions"] |= self._prompt_impl_guideline
-        prompt["Instructions"] |= self._prompt_environment
+        # prompt["Execution Environment"] |= self._prompt_environment
+        prompt["Execution Environment"] = strong_prompts.get_prompt_environment()
         if self.acfg.exec_guidelines and self.exec_guidelines is not None:
             prompt["Instructions"] |= {
                 "Execution guidelines": self.exec_guidelines
@@ -281,24 +361,36 @@ class Agent:
         return node
 
     def _debug(self, parent_node: Node) -> Node:
+        # Build Memory for debug with optional buggy nodes context
+        buggy_for_memory = self._buggy_nodes_for_memory()
+        memory: Any = {
+            "Most recent buggy node": {
+                "Code": wrap_code(parent_node.code),
+                "Execution output": wrap_code(parent_node.term_out, lang=""),
+            }
+        }
+        if buggy_for_memory:
+            memory["Past buggy nodes"] = buggy_for_memory
+
         prompt: Any = {
             "Introduction": (
-                "You are a Kaggle grandmaster attending a competition. "
-                "The previous solution contains a bug, exhibits package version incompatibility, or may be overfitted without implementing cross-validation. "
+                "Think step by step. You are a Kaggle grandmaster attending a competition. "
+                "The previous solution contains a bug, exhibits syntax error for version incompatibility, or may be overfitted without implementing cross-validation. "
                 "Please revise the code based on the following information to address these issues and ensure it functions correctly."
                 "Your response should be an implementation outline in natural language,"
                 " followed by a single markdown code block which implements the bugfix/solution."
             ),
             "Task description": self.task_desc,
-            "Previous (buggy) implementation": wrap_code(parent_node.code),
-            "Execution output": wrap_code(parent_node.term_out, lang=""),
+            "Memory": memory,
             "Instructions": {},
         }
         prompt["Instructions"] |= self._prompt_resp_fmt
-        prompt["Instructions"] |= self._prompt_environment
+        # prompt["Execution Environment"] |= self._prompt_environment
+        prompt["Execution Environment"] = strong_prompts.get_prompt_environment()
         prompt["Instructions"] |= {
             "Bugfix improvement sketch guideline": [
-                "You should write a brief natural language description (3-5 sentences) of how the issue in the previous implementation can be fixed.",
+                "You should write a brief natural language description (5-10 sentences) of what the errors you try to solve are and "
+                "then how the issue in the previous implementation can be fixed.",
                 "Don't suggest to do EDA.",
             ],
         }
