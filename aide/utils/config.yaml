@@ -27,7 +27,7 @@ exec:
 generate_report: True
 # LLM settings for final report from journal
 report:
-  model: gpt-5 #gpt-4.1, gpt-5
+  model: gpt-5-codex #gpt-4.1, gpt-5
   temp: 1.0
 
 # agent hyperparams
@@ -53,16 +53,16 @@ agent:
 
   # LLM settings for coding
   code:
-    model: gpt-5 #o4-mini, gpt-5
+    model: gpt-5-codex #o4-mini, gpt-5
     temp: 0.5
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-5 # change to gpt-5 gpt-4.1-mini
+    model: gpt-5-codex # change to gpt-5 gpt-4.1-mini
     temp: 0.5
 
   # hyperparameters for the tree search
   search:
-    max_debug_depth: 3
+    max_debug_depth: 10
     debug_prob: 0.5
-    num_drafts: 10 # changed from 5 to 10
+    num_drafts: 5 # changed from 5 to 10

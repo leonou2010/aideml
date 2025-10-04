@@ -74,6 +74,11 @@ def query(
     is_openai_model = re.match(r"^(gpt-|o\d-|codex-mini-latest$)", model_name)
     use_chat_api = os.getenv("OPENAI_BASE_URL") is not None and not is_openai_model
 
+    # Force the official Responses API for GPT-5 family models
+    is_gpt5 = model_name.startswith("gpt-5")
+    if is_gpt5:
+        use_chat_api = False
+
     if use_chat_api:
         _setup_custom_client()
         # Standard chat completions API (for local servers)
@@ -92,6 +97,8 @@ def query(
         if func_spec is not None:
             filtered_kwargs["tools"] = [func_spec.as_openai_responses_tool_dict]
             filtered_kwargs["tool_choice"] = func_spec.openai_responses_tool_choice_dict
+        if is_gpt5:
+            filtered_kwargs.setdefault("reasoning", {"effort": "high"})
 
     logger.info(f"OpenAI API request: system={system_message}, user={user_message}")
 
@@ -242,16 +249,35 @@ def query(
 if __name__ == "__main__":
     import pyperclip
 
-    _setup_openai_client()
+    type_ = "chat_completions"  # or "responses"
+    model = "gpt-5-codex"  # or "gpt-5-codex"
+
+    _setup_openai_client()  # Assuming this sets up _client correctly
     try:
-        # Minimal test prompt
-        response = _client.chat.completions.create(
-            messages=[{"role": "user", "content": "Hello OpenAI, are you working?"}],
-            model="gpt-5"
-        )
-        print("API call succeeded!")
-        print("Response:", response.choices[0].message.content) # tested for gpt-5, works, sep6
-        pyperclip.copy(response.choices[0].message.content)
-        print("Response copied to clipboard!")
+        if type_ == "chat_completions":
+            response = _client.chat.completions.create(
+                messages=[{"role": "user", "content": "Hello OpenAI, are you working?"}],
+                model=model
+            )
+            print("API call succeeded!")
+            print("Response:", response.choices[0].message.content)  # Standard for chat completions
+            pyperclip.copy(response.choices[0].message.content)
+            print("Response copied to clipboard!")
+        else:
+            response = _client.responses.create(
+                model=model,
+                input=[
+                    {"role": "user", "content": "Write Python code to reverse a string and test it."}
+                ],
+                instructions="Provide code and explanation.",
+                reasoning={"effort": "high"},
+                # max_output_tokens=1000
+                # temperature= 0.7,
+                # tools=[{"type": "code_interpreter", "container": {"type": "auto"}}]
+            )
+            print("API call succeeded!")
+            print("Response:", response.output_text)  # Standard for Responses API
+            pyperclip.copy(response.output_text)
+            print("Response copied to clipboard!")
     except Exception as e:
         print("API call failed:", e)

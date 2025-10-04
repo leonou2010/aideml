@@ -265,6 +265,7 @@ class Agent:
             ],
         }
         prompt["Instructions"] |= self._prompt_impl_guideline
+        prompt["Instructions"] |= self._prompt_environment
         if self.acfg.exec_guidelines and self.exec_guidelines is not None:
             prompt["Instructions"] |= {
                 "Execution guidelines": self.exec_guidelines
@@ -294,6 +295,7 @@ class Agent:
             "Instructions": {},
         }
         prompt["Instructions"] |= self._prompt_resp_fmt
+        prompt["Instructions"] |= self._prompt_environment
         prompt["Instructions"] |= {
             "Bugfix improvement sketch guideline": [
                 "You should write a brief natural language description (3-5 sentences) of how the issue in the previous implementation can be fixed.",
